@@ -1,0 +1,83 @@
+; srcraid.inf - Adaptec/PMC Series 7 (SRC) Storport miniport (clean-room)
+; See DESIGN.md. NOTE: StartType is DEMAND (3) for safe lab testing on a
+; NON-boot controller. A production boot controller needs StartType=0 (boot).
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = SCSIAdapter
+ClassGuid   = {4d36e97b-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderName%
+CatalogFile = srcraid.cat
+DriverVer   = 11/13/2026,0.1.0.0
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 12                      ; %windir%\System32\drivers
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+srcraid.sys = 1,,
+
+[Manufacturer]
+%ProviderName% = Standard,NTamd64
+
+[Standard.NTamd64]
+%Denali.DeviceDesc%  = srcraid_Device, PCI\VEN_9005&DEV_028C   ; Series 7 (71605 etc.)
+%Tupelo.DeviceDesc%  = srcraid_Device, PCI\VEN_9005&DEV_028B   ; Series 6
+%Yosemite.DeviceDesc%= srcraid_Device, PCI\VEN_9005&DEV_028D   ; Series 8
+
+[srcraid_Device.NT]
+CopyFiles = Drivers_Dir
+
+[Drivers_Dir]
+srcraid.sys
+
+[srcraid_Device.NT.Services]
+AddService = srcraid, 2, srcraid_Service_Inst   ; 2 = SPSVCINST_ASSOCSERVICE
+
+[srcraid_Service_Inst]
+DisplayName   = %srcraid.SvcDesc%
+ServiceType   = 1                        ; SERVICE_KERNEL_DRIVER
+StartType     = 3                        ; DEMAND_START (lab); production boot = 0
+ErrorControl  = 1                        ; NORMAL
+ServiceBinary = %12%\srcraid.sys
+LoadOrderGroup = SCSI Miniport
+AddReg        = srcraid_Params
+
+[srcraid_Params]
+HKR, "Parameters", "BusType", 0x00010001, 8        ; RAID
+; Debug output master switch. 0 = quiet (default). Set to 1 to stream driver diagnostics
+; to the kernel debugger / DebugView (DbgPrintEx, IHVDRIVER). Read once at HwFindAdapter.
+; NOTE: leave 0 in production - with a kernel debugger attached the print stream throttles
+; the whole box. Change it live at HKLM\SYSTEM\CurrentControlSet\Services\srcraid\Parameters.
+HKR, "Parameters", "DebugLevel", 0x00010001, 0
+
+; .HW: opt out of ASPM and tell PnP the I/O BAR isn't required (these cards
+; expose an I/O BAR that isn't used; without this PnP can fail the start).
+; Mirrors the vendor INF. Plus MSI-X (up to 16 messages).
+[srcraid_Device.NT.HW]
+Include = machine.inf
+Needs   = PciASPMOptOut
+Needs   = PciIoSpaceNotRequired
+; MSI-X ON: full multi-vector form (no_of_msix_vectors=N in the init struct + per-vector RRQ regions
+; + HwMSInterruptRoutine). This PCI MSI-X capability is required for the firmware to deliver via MSI-X.
+AddReg  = srcraid_MSI
+
+; Mirrors the vendor INF's MSI-X registration verbatim (known-good on this HW).
+[srcraid_MSI]
+HKR, "Interrupt Management", 0x00000010
+HKR, "Interrupt Management\MessageSignaledInterruptProperties", 0x00000010
+HKR, "Interrupt Management\MessageSignaledInterruptProperties", MSISupported,       0x00010001, 1
+HKR, "Interrupt Management\MessageSignaledInterruptProperties", MessageNumberLimit, 0x00010001, 32
+HKR, "Interrupt Management\Affinity Policy", 0x00000010
+HKR, "Interrupt Management\Affinity Policy", DevicePolicy, 0x00010001, 0x05
+
+[Strings]
+ProviderName        = "srcraid (clean-room)"
+DiskName            = "srcraid Driver Disk"
+srcraid.SvcDesc     = "srcraid SRC Series 6/7/8 Storport Miniport"
+Denali.DeviceDesc   = "Adaptec Series 7 RAID (srcraid)"
+Tupelo.DeviceDesc   = "Adaptec Series 6 RAID (srcraid)"
+Yosemite.DeviceDesc = "Adaptec Series 8 RAID (srcraid)"

@@ -1,0 +1,14 @@
+# build + packaging output
+build/
+package/
+*.sys
+*.cat
+*.obj
+*.res
+*.ilk
+*.exp
+*.pdb
+# tool build artifacts (sources are tracked)
+tools/*.exe
+tools/*.obj
+tools/*.log

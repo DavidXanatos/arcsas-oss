@@ -1,0 +1,61 @@
+name: build
+
+# CI: compile + link srcraid.sys for x64 on every push / PR.
+# MSVC ships on the GitHub Windows runner; the WDK adds the kernel-mode headers
+# (wdm.h, storport.h) and libs (storport.lib, ntoskrnl.lib, hal.lib,
+# BufferOverflowFastFailK.lib) that build.ps1 links against. Signing + .cat are a
+# separate, local step (they need a code-signing cert) and are intentionally not in CI.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-x64:
+    name: Build srcraid.sys (x64)
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Windows Driver Kit (WDK)
+        shell: pwsh
+        run: |
+          # If this package ever lags the version build.ps1 wants, the Enterprise WDK
+          # (EWDK) is the robust fallback: download its ISO, mount it, and run the build
+          # from inside LaunchBuildEnv.cmd. The version-detect step below adapts to
+          # whatever version actually lands, so an exact match is not required.
+          choco install windowsdriverkit11 --no-progress -y
+
+      - name: Detect installed WDK version
+        id: wdk
+        shell: pwsh
+        run: |
+          $kit = 'C:\Program Files (x86)\Windows Kits\10'
+          $ver = Get-ChildItem "$kit\Lib" -Directory -ErrorAction Stop |
+            Where-Object {
+              (Test-Path "$kit\Lib\$($_.Name)\km\x64\storport.lib") -and
+              (Test-Path "$kit\Include\$($_.Name)\km\wdm.h")
+            } | Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty Name
+          if (-not $ver) { throw "No complete WDK (km storport.lib + wdm.h) found under $kit" }
+          Write-Host "Using WDK version: $ver"
+          "version=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Build srcraid.sys (Release, x64)
+        shell: pwsh
+        run: .\build.ps1 -WdkVer '${{ steps.wdk.outputs.version }}' -Config Release
+
+      - name: Upload driver artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: srcraid-x64
+          path: |
+            build/srcraid.sys
+            build/srcraid.pdb
+            build/srcraid.map
+            srcraid.inf
+          if-no-files-found: error
