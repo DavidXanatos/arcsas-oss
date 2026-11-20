@@ -6,6 +6,14 @@ param(
     [ValidateSet("Debug","Release")] [string]$Config = "Debug"
 )
 $ErrorActionPreference = "Stop"
+
+# CI runs this under PowerShell 7 (pwsh). Since 7.3 the default native-argument passing
+# ('Standard') keeps our manually-quoted  "/OUT:`"$path`""  quotes LITERAL, so link.exe is
+# asked to create a file whose name contains quote characters -> fatal LNK1104. 'Legacy'
+# restores Windows PowerShell 5.1 behaviour (quotes consumed as delimiters). This variable
+# exists only on pwsh 7.2+; assigning it on Windows PowerShell 5.1 is a harmless no-op.
+$PSNativeCommandArgumentPassing = 'Legacy'
+
 $root   = $PSScriptRoot
 $srcDir = Join-Path $root "src"
 $outDir = Join-Path $root "build"
