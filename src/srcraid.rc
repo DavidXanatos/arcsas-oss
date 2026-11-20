@@ -1,0 +1,47 @@
+/* srcraid.rc - version resource. VER_BUILD is injected by build.ps1 (auto-increment). */
+#include <windows.h>
+#include <ntverp.h>
+
+#ifndef VER_BUILD
+#define VER_BUILD 0
+#endif
+
+#define SRC_VER_MAJOR 0
+#define SRC_VER_MINOR 1
+#define SRC_VER_PATCH 0
+
+#define _STR2(x) #x
+#define _STR(x)  _STR2(x)
+#define SRC_VER_STR _STR(SRC_VER_MAJOR) "." _STR(SRC_VER_MINOR) "." _STR(SRC_VER_PATCH) "." _STR(VER_BUILD) "\0"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    SRC_VER_MAJOR,SRC_VER_MINOR,SRC_VER_PATCH,VER_BUILD
+ PRODUCTVERSION SRC_VER_MAJOR,SRC_VER_MINOR,SRC_VER_PATCH,VER_BUILD
+ FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+ FILEFLAGS      VS_FF_DEBUG
+#else
+ FILEFLAGS      0x0L
+#endif
+ FILEOS         VOS_NT
+ FILETYPE       VFT_DRV
+ FILESUBTYPE    VFT2_DRV_SYSTEM
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "srcraid (clean-room)"
+            VALUE "FileDescription",  "SRC Series 6/7/8 Storport Miniport"
+            VALUE "FileVersion",      SRC_VER_STR
+            VALUE "InternalName",     "srcraid.sys"
+            VALUE "OriginalFilename", "srcraid.sys"
+            VALUE "ProductName",      "srcraid"
+            VALUE "ProductVersion",   SRC_VER_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
