@@ -1,10 +1,13 @@
 name: build
 
-# CI: compile + link srcraid.sys for x64 on every push / PR.
+# CI: compile + link + package + test-sign srcraid for x64 on every push / PR.
 # MSVC ships on the GitHub Windows runner; the WDK adds the kernel-mode headers
 # (wdm.h, storport.h) and libs (storport.lib, ntoskrnl.lib, hal.lib,
-# BufferOverflowFastFailK.lib) that build.ps1 links against. Signing + .cat are a
-# separate, local step (they need a code-signing cert) and are intentionally not in CI.
+# BufferOverflowFastFailK.lib) that build.ps1 links against. package.ps1 then builds the
+# catalog (inf2cat) and TEST-signs srcraid.sys + srcraid.cat with a self-signed cert
+# generated on the runner (exported as srcraid_test.cer). The artifact is a flat, ready-to-
+# install package (inf + sys + cat + cer together). Production WHQL/attestation signing with
+# a real code-signing cert remains a separate manual step.
 
 on:
   push:
@@ -45,17 +48,22 @@ jobs:
           Write-Host "Using WDK version: $ver"
           "version=$ver" >> $env:GITHUB_OUTPUT
 
-      - name: Build srcraid.sys (Release, x64)
+      - name: Build + package + test-sign (Release, x64)
         shell: pwsh
-        run: .\build.ps1 -WdkVer '${{ steps.wdk.outputs.version }}' -Config Release
+        run: .\package.ps1 -WdkVer '${{ steps.wdk.outputs.version }}' -Config Release
 
-      - name: Upload driver artifact
+      - name: Upload test-signed driver package
         uses: actions/upload-artifact@v4
         with:
           name: srcraid-x64
+          path: package
+          if-no-files-found: error
+
+      - name: Upload symbols (pdb/map)
+        uses: actions/upload-artifact@v4
+        with:
+          name: srcraid-x64-symbols
           path: |
-            build/srcraid.sys
             build/srcraid.pdb
             build/srcraid.map
-            srcraid.inf
           if-no-files-found: error
