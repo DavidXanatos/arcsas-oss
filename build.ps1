@@ -69,13 +69,31 @@ Write-Host "[rc] srcraid.rc" -ForegroundColor Cyan
 & $rc /nologo /dVER_BUILD=$build "/fo$res" "/I$incUm" "/I$incShared" "/I$msvcInc" "$srcDir\srcraid.rc"
 if ($LASTEXITCODE -ne 0) { throw "rc failed ($LASTEXITCODE)" }
 
+# --- resolve kernel import libs to absolute paths (robust across partial/split WDK layouts) ---
+# The GitHub runner can expose a WDK version that has storport.lib (so version-detect picks it)
+# but is missing a sibling like BufferOverflowFastFailK.lib; search every installed Lib version
+# per-lib and bind the absolute path so link can't LNK1104 on a lib that exists *somewhere*.
+$kitLibRoot = "C:\Program Files (x86)\Windows Kits\10\Lib"
+$umLib = Join-Path $kitLibRoot "$WdkVer\um\x64"
+$reqLibs = @("storport.lib","ntoskrnl.lib","hal.lib","BufferOverflowFastFailK.lib")
+$libAbs = @()
+foreach ($l in $reqLibs) {
+    $hit = @((Join-Path $kitLib $l),(Join-Path $umLib $l)) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $hit) {
+        $hit = (Get-ChildItem "$kitLibRoot\*\km\x64\$l","$kitLibRoot\*\um\x64\$l" -ErrorAction SilentlyContinue |
+                Sort-Object FullName -Descending | Select-Object -First 1).FullName
+    }
+    if (-not $hit) { throw "link lib not found: $l (searched $kitLib, $umLib, and all WDK Lib versions under $kitLibRoot)" }
+    $libAbs += $hit
+}
+Write-Host "[libs] $(($libAbs | ForEach-Object { Split-Path $_ -Parent } | Select-Object -Unique) -join '; ')" -ForegroundColor DarkGray
+
 $linkArgs = @(
     "/nologo","/DRIVER","/SUBSYSTEM:NATIVE,10.0","/ENTRY:GsDriverEntry","/MACHINE:X64"
     "/NODEFAULTLIB","/INTEGRITYCHECK","/RELEASE","/OPT:REF,ICF","/INCREMENTAL:NO","/DEBUG"
-    "/LIBPATH:`"$kitLib`"","/LIBPATH:`"$msvcLib`""
-    "storport.lib","ntoskrnl.lib","hal.lib","BufferOverflowFastFailK.lib"
+    "/LIBPATH:`"$kitLib`"","/LIBPATH:`"$umLib`"","/LIBPATH:`"$msvcLib`""
     "/OUT:`"$outDir\srcraid.sys`"","/PDB:`"$outDir\srcraid.pdb`"","/MAP:`"$outDir\srcraid.map`""
-) + ($objs | ForEach-Object { "`"$_`"" }) + @("`"$res`"")
+) + ($libAbs | ForEach-Object { "`"$_`"" }) + ($objs | ForEach-Object { "`"$_`"" }) + @("`"$res`"")
 
 Write-Host "[link] linking srcraid.sys ..." -ForegroundColor Cyan
 & $link @linkArgs
